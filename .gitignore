@@ -1,0 +1,9 @@
+.vscode
+**/**/__pycache__
+model/
+save_model/
+save_pretrained/
+data/
+data_record/**
+ner/bert/
+temp/
