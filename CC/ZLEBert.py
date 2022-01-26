@@ -95,7 +95,7 @@ class BertLayer(nn.Module):
         if self.add_cross_attention:
             assert self.is_decoder, f"{self} should be used as a decoder model if cross attention is added"
             self.crossattention = BertAttention(config)
-
+            
         # here we add a attention for matched word
         self.has_word_attn = has_word_attn
         if self.has_word_attn:
@@ -124,7 +124,10 @@ class BertLayer(nn.Module):
             head_mask=None,
             encoder_hidden_states=None,
             encoder_attention_mask=None,
-            output_attentions=False
+            output_attentions=False,
+            input_inter_embeddings=None,
+            input_inter_mask=None
+
     ):
         """
         code refer to: https://github.com/huggingface/transformers/blob/master/src/transformers/modeling_bert.py
@@ -171,6 +174,9 @@ class BertLayer(nn.Module):
 
         if self.has_word_attn:
             assert input_word_mask is not None
+            inter_outputs = input_inter_embeddings
+            print(inter_outputs)
+            print(0/0)   
 
             # transform 200 => 768
             word_outputs = self.word_transform(
@@ -195,7 +201,9 @@ class BertLayer(nn.Module):
             layer_output = self.dropout(layer_output)
             layer_output = self.fuse_layernorm(layer_output)
 
-        outputs = (layer_output,) + outputs
+            # inter_embedding
+            
+        outputs = (layer_output,) + outputs 
         return outputs
 
     def feed_forward_chunk(self, attention_output):
@@ -231,6 +239,8 @@ class BertEncoder(nn.Module):
             output_attentions=False,
             output_hidden_states=False,
             return_dict=False,
+            input_inter_embeddings=None,
+            input_inter_mask=None
     ):
         all_hidden_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
@@ -259,6 +269,8 @@ class BertEncoder(nn.Module):
                     layer_head_mask,
                     encoder_hidden_states,
                     encoder_attention_mask,
+                    input_inter_embeddings,
+                    input_inter_mask
                 )
             else:
                 layer_outputs = layer_module(
@@ -270,6 +282,8 @@ class BertEncoder(nn.Module):
                     encoder_hidden_states,
                     encoder_attention_mask,
                     output_attentions,
+                    input_inter_embeddings,
+                    input_inter_mask
                 )
             hidden_states = layer_outputs[0]
             # print("Layer %d: \n"%(i+1))
@@ -330,9 +344,9 @@ class BertPreTrainedModel(PreTrainedModel):
             module.bias.data.zero_()
 
 
-class WCBertModel(BertPreTrainedModel):
+class ZWCBertModel(BertPreTrainedModel):
     def __init__(self, config, add_pooling_layer=True):
-        super(WCBertModel, self).__init__(config)
+        super(ZWCBertModel, self).__init__(config)
 
         self.embeddings = BertEmbeddings(config)
         self.encoder = BertEncoder(config)
@@ -369,6 +383,8 @@ class WCBertModel(BertPreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        matched_inter_embeddings=None,
+        matched_inter_mask=None,
     ):
         r"""
         encoder_hidden_states  (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`):
@@ -460,6 +476,8 @@ class WCBertModel(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            input_inter_embeddings = matched_inter_embeddings,
+            input_inter_mask=matched_inter_mask
         )
         sequence_output = encoder_outputs[0]
         pooled_output = self.pooler(sequence_output)

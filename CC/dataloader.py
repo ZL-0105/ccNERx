@@ -13,6 +13,7 @@ from CC.loaders.finetune.ftloader_v1 import FTLoaderV1
 from CC.loaders.pretrain.ptloader_v1 import PTLoaderV1
 from CC.loaders.pretrain.ptloader_v2 import PTLoaderV2
 from CC.loaders.label_lex_loader import LabelLXLoader
+from CC.loaders.le_loader_zl import ZLLoader
 
 class AutoDataLoader(IDataLoader):
     def __init__(self, **args):
@@ -29,7 +30,8 @@ class AutoDataLoader(IDataLoader):
             'labellex_loader': LabelLXLoader,
             'ptloader_v1': PTLoaderV1,
             'ptloader_v2': PTLoaderV2,
-            'labellex_loader': LabelLXLoader
+            'labellex_loader': LabelLXLoader,
+            'le_loader_zl':ZLLoader
         }
         if self.loader_name not in dataloaders:
             raise Exception("Dataloader not found name '{}'.".format(self.loader_name))

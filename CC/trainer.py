@@ -74,9 +74,11 @@ class NERTrainer(ITrainer):
             model_args['pretrained_embeddings'] = self.vocab_embedding
         if 'tag_embedding_file' in args:
             model_args['label_embeddings'] = self.label_embedding
+        if 'inter_knowledge_file' in args:
+            model_args['inter_embeddings'] = self.inter_embedding
         if 'pretrained_file_name' in args:
             model_args['pretrained_file_name'] = args['pretrained_file_name']
-
+        
         self.bert_ner = CCNERModel(**model_args)
         self.model, self.birnncrf = self.bert_ner()
 
@@ -92,6 +94,21 @@ class NERTrainer(ITrainer):
             self.tag_size = self.tag_vocab.__len__()
             self.analysis = CCAnalysis(
                 self.tag_vocab.token2id, self.tag_vocab.id2token)
+
+        # loader about inter_knowledge
+        if self.loader_name == 'le_loader_zl':
+            self.vocab_embedding = result['vocab_embedding']
+            self.embedding_dim = result['embedding_dim']
+
+            self.inter_embedding = result['inter_embedding']   
+            self.inter_embedding_dim = result['inter_embedding_dim']
+            # print(self.inter_embedding)
+            # print(self.inter_embedding_dim)
+            self.tag_vocab = result['tag_vocab']
+            self.tag_size = self.tag_vocab.__len__()
+            self.analysis = CCAnalysis(
+                self.tag_vocab.token2id, self.tag_vocab.id2token)
+
         if self.loader_name == 'cn_loader':
             self.dm = result['dm']
             self.tag_size = len(self.dm.tag_to_idx)

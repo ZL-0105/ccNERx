@@ -11,7 +11,7 @@ import random
 from distutils.util import strtobool
 
 
-class LLoader(IDataLoader):
+class ZLLoader(IDataLoader):
     def __init__(self, **args):
         KwargsParser(debug=True) \
             .add_argument("batch_size", int, defaultValue=4) \
@@ -23,7 +23,7 @@ class LLoader(IDataLoader):
             .add_argument("eval_file", str) \
             .add_argument("test_file", str) \
             .add_argument("tag_file", str) \
-            .add_argument("inter_knowledge",str)\
+            .add_argument("inter_knowledge_file",str)\
             .add_argument("bert_vocab_file", str) \
             .add_argument("output_eval", bool, defaultValue=True) \
             .add_argument("max_scan_num", int, defaultValue=1000000) \
@@ -74,7 +74,7 @@ class LLoader(IDataLoader):
         self.inter_knowledge = cache.load("inter_knowledge",lambda: Vocab().from_list(
             self.matched_words, is_word=True, has_default=False, unk_num=5))
 
-        self.inter_embedding,self.embedding_dim = cache.load("inter_embedding",lambda: VocabEmbedding(self.inter_knowledge).build_from_file(
+        self.inter_embedding,self.inter_embedding_dim = cache.load("inter_embedding",lambda: VocabEmbedding(self.inter_knowledge).build_from_file(
             self.word_embedding_file, self.max_scan_num, self.add_seq_vocab).get_embedding())
 
 
@@ -86,18 +86,24 @@ class LLoader(IDataLoader):
     def process_data(self, batch_size: int, eval_batch_size: int = None, test_batch_size: int = None):
         if self.use_test:
             self.myData_test = ZLEBertDataSet(self.data_files[2], self.tokenizer, self.lexicon_tree,
-                                            self.word_vocab, self.tag_vocab, self.max_word_num, self.max_seq_length, self.inter_knowledge, self.default_tag, self.do_predict)
+                                            self.word_vocab, self.tag_vocab, self.max_word_num, self.max_seq_length,
+                                            #  self.inter_knowledge,
+                                              self.default_tag, self.do_predict)
             self.dataiter_test = DataLoader(
                 self.myData_test, batch_size=test_batch_size)
         else:
             self.myData = ZLEBertDataSet(self.data_files[0], self.tokenizer, self.lexicon_tree, self.word_vocab,
-                                        self.tag_vocab, self.max_word_num, self.max_seq_length, self.inter_knowledge, self.default_tag, do_shuffle=self.do_shuffle)
+                                        self.tag_vocab, self.max_word_num, self.max_seq_length,
+                                        #  self.inter_knowledge,
+                                          self.default_tag, do_shuffle=self.do_shuffle)
 
             self.dataiter = DataLoader(self.myData, batch_size=batch_size)
             if self.output_eval:
                 key = "eval_data"
                 self.myData_eval = ZLEBertDataSet(self.data_files[1], self.tokenizer, self.lexicon_tree, self.word_vocab,
-                                                 self.tag_vocab, self.inter_knowledge, self.max_word_num,  self.max_seq_length, self.default_tag)
+                                                 self.tag_vocab,
+                                                #   self.inter_knowledge,
+                                                  self.max_word_num,  self.max_seq_length, self.default_tag)
                 self.dataiter_eval = DataLoader(
                         self.myData_eval, batch_size=eval_batch_size)
 
@@ -111,7 +117,8 @@ class LLoader(IDataLoader):
                 'word_vocab': self.word_vocab,
                 'tag_vocab': self.tag_vocab,
                 'inter_knowledge': self.inter_knowledge,
-                'inter_embedding': self.inter_embedding
+                'inter_embedding': self.inter_embedding,
+                'inter_embedding_dim': self.inter_embedding_dim,
             }
         if self.output_eval:
             return {
@@ -124,7 +131,8 @@ class LLoader(IDataLoader):
                 'word_vocab': self.word_vocab,
                 'tag_vocab': self.tag_vocab,
                 'inter_knowledge': self.inter_knowledge,
-                'inter_embedding': self.inter_embedding
+                'inter_embedding': self.inter_embedding,
+                'inter_embedding_dim': self.inter_embedding_dim,
             }
         else:
             return {
@@ -135,12 +143,15 @@ class LLoader(IDataLoader):
                 'word_vocab': self.word_vocab,
                 'tag_vocab': self.tag_vocab,
                 'inter_knowledge': self.inter_knowledge,
-                'inter_embedding': self.inter_embedding
+                'inter_embedding': self.inter_embedding,
+                'inter_embedding_dim': self.inter_embedding_dim,
             }
 
 
 class ZLEBertDataSet(Dataset):
-    def __init__(self, file: str, tokenizer, lexicon_tree: Trie, word_vocab: Vocab, tag_vocab: Vocab, max_word_num: int, max_seq_length: int, default_tag: str, inter_knowledge: Vocab, do_predict: bool = False, do_shuffle: bool = False):
+    def __init__(self, file: str, tokenizer, lexicon_tree: Trie, word_vocab: Vocab, tag_vocab: Vocab, max_word_num: int, max_seq_length: int, default_tag: str,
+    #  inter_knowledge: Vocab,
+      do_predict: bool = False, do_shuffle: bool = False):
         self.file: str = file
         self.tokenizer = tokenizer
         self.lexicon_tree: Trie = lexicon_tree
@@ -149,7 +160,7 @@ class ZLEBertDataSet(Dataset):
         self.max_word_num: int = max_word_num
         self.max_seq_length: int = max_seq_length
         self.default_tag: str = default_tag
-        self.inter_knowledge: Vocab = inter_knowledge
+        # self.inter_knowledge: Vocab = inter_knowledge
         self.do_shuffle: bool = do_shuffle
         self.do_predict: bool = do_predict
         if not self.do_predict:
@@ -166,6 +177,7 @@ class ZLEBertDataSet(Dataset):
         else:
             label = [self.default_tag] + \
                 obj["label"][:self.max_seq_length-2]+[self.default_tag]
+        
         # convert to embedding
         token_ids = self.tokenizer.convert_tokens_to_ids(text)
         label_ids = self.label_vocab.token2id(label)
