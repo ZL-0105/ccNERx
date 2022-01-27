@@ -36,6 +36,7 @@ class CCNERModel(IModel):
         if args['model_name'] in required_inter_embedding_models:
             assert "inter_embeddings" in args, "argument inter_embedding required"
             self.inter_embeddings = args['inter_embeddings']
+        
         self.load_model()
 
     def load_model(self):
@@ -48,7 +49,7 @@ class CCNERModel(IModel):
             # print(self.pretrained_embeddings)
             # print(args['matched_label_embeddings'])
             self.model = ZLEBertModel.from_pretrained(
-            self.pretrained_file_name, pretrained_embeddings=self.pretrained_embeddings, config=config)
+            self.pretrained_file_name, pretrained_embeddings=self.pretrained_embeddings, config=config, inter_embeddings = self.inter_embeddings)
         elif self.model_name == 'LEBertFusion':
             self.model = LEBertModelFusion.from_pretrained(
             self.pretrained_file_name, pretrained_embeddings=self.pretrained_embeddings, config=config)
@@ -97,16 +98,26 @@ class ZLEBertModel(BertPreTrainedModel):
     pretrained_embeddings: 预训练embeddings shape: size * 200
     '''
 
-    def __init__(self, config, pretrained_embeddings):
+    def __init__(self, config, pretrained_embeddings, inter_embeddings):
         super().__init__(config)
 
         word_vocab_size = pretrained_embeddings.shape[0]
         embed_dim = pretrained_embeddings.shape[1]
         self.word_embeddings = nn.Embedding(word_vocab_size, embed_dim)
+        
+        inter_word_vocab_size = inter_embeddings.shape[0]
+        inter_embed_dim = inter_embeddings.shape[1]
+        self.inter_word_embeddings = nn.Embedding(inter_word_vocab_size, inter_embed_dim)
+        
+        # print('inter_word_embeddings xxxxxxxxx')
+        # print(self.inter_word_embeddings)
+        # print(inter_embeddings)
         self.bert = ZWCBertModel(config)
 
         self.init_weights()
-
+        
+        self.inter_word_embeddings.weight.data.copy_(
+            torch.from_numpy(inter_embeddings))
         # init the embedding
         self.word_embeddings.weight.data.copy_(
             torch.from_numpy(pretrained_embeddings))

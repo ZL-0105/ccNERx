@@ -152,6 +152,8 @@ class BertLayer(nn.Module):
         outputs = self_attention_outputs[1:]
 
         # decode need join attention from the outputs
+        
+
         if self.is_decoder and encoder_hidden_states is not None:
             assert hasattr(
                 self, "crossattention"
