@@ -27,6 +27,7 @@ class ZLLoader(IDataLoader):
             .add_argument("bert_vocab_file", str) \
             .add_argument("output_eval", bool, defaultValue=True) \
             .add_argument("max_scan_num", int, defaultValue=1000000) \
+            .add_argument("inter_max_scan_num", int, defaultValue=3000) \
             .add_argument("add_seq_vocab", bool, defaultValue=False) \
             .add_argument("max_seq_length", int, defaultValue=256) \
             .add_argument("max_word_num", int, defaultValue=5) \
@@ -45,6 +46,7 @@ class ZLLoader(IDataLoader):
 
         self.read_data_set()
         self.verify_data()
+        # self.inter_data()
         self.process_data(
             self.batch_size, self.eval_batch_size, self.test_batch_size)
 
@@ -71,23 +73,54 @@ class ZLLoader(IDataLoader):
             self.word_embedding_file, self.max_scan_num, self.add_seq_vocab).get_embedding())
 
         # 外部知识
-        self.inter_knowledge = cache.load("inter_knowledge",lambda: Vocab().from_list(
-            self.matched_words, is_word=True, has_default=False, unk_num=5))
+        self.inter_lexicon_tree = cache.load("inter_lexicon_tree",lambda: TrieFactory.get_trie_from_vocabs(
+            [self.inter_knowledge_file], self.inter_max_scan_num))
+        
+        self.inter_matched_words = cache.load("inter_matched_words",lambda: TrieFactory.get_all_matched_word_from_dataset(
+            self.data_files, self.inter_lexicon_tree))
 
-        self.inter_embedding,self.inter_embedding_dim = cache.load("inter_embedding",lambda: VocabEmbedding(self.inter_knowledge).build_from_file(
-            self.word_embedding_file, self.max_scan_num, self.add_seq_vocab).get_embedding())
+        self.inter_word_vocab = cache.load("inter_word_vocab",lambda: Vocab().from_list(
+            self.inter_matched_words, is_word=True, has_default=False, unk_num=5))
+
+        self.inter_embedding,self.inter_embedding_dim = cache.load("inter_embedding",lambda: VocabEmbedding(self.inter_word_vocab).build_from_file(
+            self.word_embedding_file, self.inter_max_scan_num, self.add_seq_vocab).get_embedding())
 
 
         self.tokenizer = BertTokenizer.from_pretrained(self.bert_vocab_file)
 
+    # def inter_data(self):
+    #     self.inter_matched_word_ids = []
+    #     self.inter_matched_word_mask = []
+    #     line_total = FileUtil.count_lines(self.inter_knowledge_file)
+    #     for line in tqdm(FileUtil.line_iter(self.inter_knowledge_file), desc=f"load dataset from {self.inter_knowledge_file}", total=line_total):
+    #         inter_matched_word_ids = np.zeros(
+    #             (self.max_seq_length, self.max_word_num), dtype=np.int)
+    #         inter_matched_word_mask = np.zeros(
+    #             (self.max_seq_length, self.max_word_num), dtype=np.int)
+    #         text = []
+    #         for word in line:
+    #             if word != '\n':
+    #                 text += word
+    #         data = ["[CLS]"] + text + ["[SEP]"]
+    #         # print(data)
+    #         self.matched_words = self.lexicon_tree.getAllMatchedWordList(
+    #             data, self.max_word_num)
+    #         for i, words in enumerate(self.matched_words):
+    #             inter_word_ids = self.inter_knowledge.token2id(words)
+    #             inter_matched_word_ids[i][:len(inter_word_ids)] = inter_word_ids[:self.max_word_num]
+    #             inter_matched_word_mask[i][:len(inter_word_ids)] = 1
+    #         self.inter_matched_word_ids = inter_matched_word_ids
+    #         self.inter_matched_word_mask = inter_matched_word_mask
+        
     def verify_data(self):
         pass
-
+    
     def process_data(self, batch_size: int, eval_batch_size: int = None, test_batch_size: int = None):
         if self.use_test:
             self.myData_test = ZLEBertDataSet(self.data_files[2], self.tokenizer, self.lexicon_tree,
                                             self.word_vocab, self.tag_vocab, self.max_word_num, self.max_seq_length,
                                             #  self.inter_knowledge,
+                                             self.inter_lexicon_tree,self.inter_word_vocab,
                                               self.default_tag, self.do_predict)
             self.dataiter_test = DataLoader(
                 self.myData_test, batch_size=test_batch_size)
@@ -95,15 +128,17 @@ class ZLLoader(IDataLoader):
             self.myData = ZLEBertDataSet(self.data_files[0], self.tokenizer, self.lexicon_tree, self.word_vocab,
                                         self.tag_vocab, self.max_word_num, self.max_seq_length,
                                         #  self.inter_knowledge,
+                                         self.inter_lexicon_tree,self.inter_word_vocab,
                                           self.default_tag, do_shuffle=self.do_shuffle)
 
             self.dataiter = DataLoader(self.myData, batch_size=batch_size)
             if self.output_eval:
                 key = "eval_data"
                 self.myData_eval = ZLEBertDataSet(self.data_files[1], self.tokenizer, self.lexicon_tree, self.word_vocab,
-                                                 self.tag_vocab,
-                                                #   self.inter_knowledge,
-                                                  self.max_word_num,  self.max_seq_length, self.default_tag)
+                                                 self.tag_vocab, self.max_word_num,  self.max_seq_length, 
+                                                #  self.inter_knowledge,
+                                                 self.inter_lexicon_tree,self.inter_word_vocab,
+                                                 self.default_tag)
                 self.dataiter_eval = DataLoader(
                         self.myData_eval, batch_size=eval_batch_size)
 
@@ -116,7 +151,7 @@ class ZLLoader(IDataLoader):
                 'embedding_dim': self.embedding_dim,
                 'word_vocab': self.word_vocab,
                 'tag_vocab': self.tag_vocab,
-                'inter_knowledge': self.inter_knowledge,
+                'inter_word_vocab': self.inter_word_vocab,
                 'inter_embedding': self.inter_embedding,
                 'inter_embedding_dim': self.inter_embedding_dim,
             }
@@ -130,7 +165,7 @@ class ZLLoader(IDataLoader):
                 'embedding_dim': self.embedding_dim,
                 'word_vocab': self.word_vocab,
                 'tag_vocab': self.tag_vocab,
-                'inter_knowledge': self.inter_knowledge,
+                'inter_word_vocab': self.inter_word_vocab,
                 'inter_embedding': self.inter_embedding,
                 'inter_embedding_dim': self.inter_embedding_dim,
             }
@@ -142,16 +177,17 @@ class ZLLoader(IDataLoader):
                 'embedding_dim': self.embedding_dim,
                 'word_vocab': self.word_vocab,
                 'tag_vocab': self.tag_vocab,
-                'inter_knowledge': self.inter_knowledge,
+                'inter_word_vocab': self.inter_word_vocab,
                 'inter_embedding': self.inter_embedding,
                 'inter_embedding_dim': self.inter_embedding_dim,
             }
 
 
 class ZLEBertDataSet(Dataset):
-    def __init__(self, file: str, tokenizer, lexicon_tree: Trie, word_vocab: Vocab, tag_vocab: Vocab, max_word_num: int, max_seq_length: int, default_tag: str,
-    #  inter_knowledge: Vocab,
-      do_predict: bool = False, do_shuffle: bool = False):
+    def __init__(self, file: str, tokenizer, lexicon_tree: Trie, word_vocab: Vocab, tag_vocab: Vocab, max_word_num: int, max_seq_length: int,
+    # inter_knowledge: Vocab,
+    inter_lexicon_tree: Trie, inter_word_vocab: Vocab, 
+     default_tag: str, do_predict: bool = False, do_shuffle: bool = False):
         self.file: str = file
         self.tokenizer = tokenizer
         self.lexicon_tree: Trie = lexicon_tree
@@ -161,6 +197,8 @@ class ZLEBertDataSet(Dataset):
         self.max_seq_length: int = max_seq_length
         self.default_tag: str = default_tag
         # self.inter_knowledge: Vocab = inter_knowledge
+        self.inter_lexicon_tree: Trie = inter_lexicon_tree
+        self.inter_word_vocab: Vocab = inter_word_vocab
         self.do_shuffle: bool = do_shuffle
         self.do_predict: bool = do_predict
         if not self.do_predict:
@@ -177,7 +215,6 @@ class ZLEBertDataSet(Dataset):
         else:
             label = [self.default_tag] + \
                 obj["label"][:self.max_seq_length-2]+[self.default_tag]
-        
         # convert to embedding
         token_ids = self.tokenizer.convert_tokens_to_ids(text)
         label_ids = self.label_vocab.token2id(label)
@@ -195,14 +232,30 @@ class ZLEBertDataSet(Dataset):
             (self.max_seq_length, self.max_word_num), dtype=np.int)
         matched_word_mask = np.zeros(
             (self.max_seq_length, self.max_word_num), dtype=np.int)
+
+        inter_matched_word_ids = np.zeros(
+            (self.max_seq_length, self.max_word_num), dtype=np.int)
+        inter_matched_word_mask = np.zeros(
+            (self.max_seq_length, self.max_word_num), dtype=np.int)
         # get matched word
         matched_words = self.lexicon_tree.getAllMatchedWordList(
             text, self.max_word_num)
+
         for i, words in enumerate(matched_words):
             word_ids = self.word_vocab.token2id(words)
             matched_word_ids[i][:len(word_ids)] = word_ids[:self.max_word_num]
             matched_word_mask[i][:len(word_ids)] = 1
-
+        # get inter matched word
+        inter_matched_words = self.inter_lexicon_tree.getAllMatchedWordList(
+            text, self.max_word_num)
+        # print(matched_words)
+        # print(0/0)
+        for i, words in enumerate(inter_matched_words):
+            inter_word_ids = self.inter_word_vocab.token2id(words)
+            inter_matched_word_ids[i][:len(inter_word_ids)] = inter_word_ids[:self.max_word_num]
+            inter_matched_word_mask[i][:len(inter_word_ids)] = 1
+        
+        
         assert input_token_ids.shape[0] == segment_ids.shape[0]
         assert input_token_ids.shape[0] == attention_mask.shape[0]
         assert input_token_ids.shape[0] == matched_word_ids.shape[0]
@@ -216,7 +269,10 @@ class ZLEBertDataSet(Dataset):
             attention_mask = tensor(segment_ids)
             matched_word_ids = tensor(matched_word_ids)
             matched_word_mask = tensor(matched_word_mask)
+            inter_matched_word_ids = tensor(inter_matched_word_ids)
+            inter_matched_word_mask = tensor(inter_matched_word_mask)
             labels = tensor(labels)
+        
         if return_dict:
             return {
                 "input_ids": input_token_ids,
@@ -224,10 +280,12 @@ class ZLEBertDataSet(Dataset):
                 "attention_mask": attention_mask,
                 "matched_word_ids": matched_word_ids,
                 "matched_word_mask": matched_word_mask,
+                "inter_matched_word_ids": inter_matched_word_ids,
+                "inter_matched_word_mask": inter_matched_word_mask,
                 "labels": labels,
             }
-
-        return input_token_ids, segment_ids, attention_mask, matched_word_ids, matched_word_mask, labels
+        
+        return input_token_ids, segment_ids, attention_mask, matched_word_ids, matched_word_mask, labels, inter_matched_word_ids, inter_matched_word_mask
 
     def init_dataset(self):
         line_total = FileUtil.count_lines(self.file)
@@ -236,26 +294,39 @@ class ZLEBertDataSet(Dataset):
         self.attention_mask = []
         self.matched_word_ids = []
         self.matched_word_mask = []
+        self.inter_matched_word_ids = []
+        self.inter_matched_word_mask = []
         self.labels = []
 
         for line in tqdm(FileUtil.line_iter(self.file), desc=f"load dataset from {self.file}", total=line_total):
             line = line.strip()
             data: Dict[str, List[Any]] = json.loads(line)
-            input_token_ids, segment_ids, attention_mask, matched_word_ids, matched_word_mask, labels = self.convert_embedding(
+            input_token_ids, segment_ids, attention_mask, matched_word_ids, matched_word_mask, labels, inter_matched_word_ids, inter_matched_word_mask = self.convert_embedding(
                 data)
-
+            
             self.input_token_ids.append(input_token_ids)
             self.segment_ids.append(segment_ids)
             self.attention_mask.append(attention_mask)
             self.matched_word_ids.append(matched_word_ids)
             self.matched_word_mask.append(matched_word_mask)
+            self.inter_matched_word_ids.append(inter_matched_word_ids)
+            self.inter_matched_word_mask.append(inter_matched_word_mask)
             self.labels.append(labels)
+
+
         self.size = len(self.input_token_ids)
         self.input_token_ids = np.array(self.input_token_ids)
         self.segment_ids = np.array(self.segment_ids)
         self.attention_mask = np.array(self.attention_mask)
         self.matched_word_ids = np.array(self.matched_word_ids)
         self.matched_word_mask = np.array(self.matched_word_mask)
+        self.inter_matched_word_ids = np.array(self.inter_matched_word_ids)
+        self.inter_matched_word_mask = np.array(self.inter_matched_word_mask)
+        # print(self.matched_word_ids.shape)
+        # print(1)
+        # print(self.inter_matched_word_ids.shape)
+        # print(2)
+        # print(0/0)
         self.labels = np.array(self.labels)
         self.indexes = [i for i in range(self.size)]
         if self.do_shuffle:
@@ -269,6 +340,8 @@ class ZLEBertDataSet(Dataset):
             'token_type_ids': tensor(self.segment_ids[idx]),
             'matched_word_ids': tensor(self.matched_word_ids[idx]),
             'matched_word_mask': tensor(self.matched_word_mask[idx]),
+            'inter_matched_word_ids':tensor(self.inter_matched_word_ids[idx]),
+            'inter_matched_word_mask':tensor(self.inter_matched_word_mask[idx]),
             'labels': tensor(self.labels[idx])
         }
 

@@ -46,8 +46,6 @@ class CCNERModel(IModel):
             self.pretrained_file_name, pretrained_embeddings=self.pretrained_embeddings, config=config)
         
         elif self.model_name == 'ZLEBert':
-            # print(self.pretrained_embeddings)
-            # print(args['matched_label_embeddings'])
             self.model = ZLEBertModel.from_pretrained(
             self.pretrained_file_name, pretrained_embeddings=self.pretrained_embeddings, config=config, inter_embeddings = self.inter_embeddings)
         elif self.model_name == 'LEBertFusion':
@@ -109,15 +107,12 @@ class ZLEBertModel(BertPreTrainedModel):
         inter_embed_dim = inter_embeddings.shape[1]
         self.inter_word_embeddings = nn.Embedding(inter_word_vocab_size, inter_embed_dim)
         
-        # print('inter_word_embeddings xxxxxxxxx')
-        # print(self.inter_word_embeddings)
-        # print(inter_embeddings)
         self.bert = ZWCBertModel(config)
 
         self.init_weights()
         
-        self.inter_word_embeddings.weight.data.copy_(
-            torch.from_numpy(inter_embeddings))
+        # self.inter_word_embeddings.weight.data.copy_(
+        #     torch.from_numpy(inter_embeddings))
         # init the embedding
         self.word_embeddings.weight.data.copy_(
             torch.from_numpy(pretrained_embeddings))
@@ -127,16 +122,25 @@ class ZLEBertModel(BertPreTrainedModel):
             self,
             **args
     ):
+        # print(args['matched_word_ids'].shape)
+        # print(1)
+        # print(args['inter_matched_word_ids'].shape)
+        # print(2)
+        # print(0/0)
+
         matched_word_embeddings = self.word_embeddings(
-            args['matched_word_ids'])
+            args['matched_word_ids'])   
+        matched_inter_embeddings = self.inter_word_embeddings(
+            args['inter_matched_word_ids'])
         outputs = self.bert(
             input_ids=args['input_ids'],
             attention_mask=args['attention_mask'],
             token_type_ids=args['token_type_ids'],
             matched_word_embeddings=matched_word_embeddings,
             matched_word_mask=args['matched_word_mask'],
-            # matched_inter_embeddings=args['matched_inter_embeddings'],
-            # matched_inter_mask=args['matched_inter_mask']
+
+            matched_inter_embeddings= matched_inter_embeddings,
+            matched_inter_mask=args['inter_matched_word_mask'],
         )
 
         sequence_output = outputs[0]

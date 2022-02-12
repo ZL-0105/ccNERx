@@ -176,16 +176,25 @@ class BertLayer(nn.Module):
 
         if self.has_word_attn:
             assert input_word_mask is not None
-            inter_outputs = input_inter_embeddings
-            print(inter_outputs)
-            print(0/0)   
-
             # transform 200 => 768
             word_outputs = self.word_transform(
                 input_word_embeddings)  # [N, L, W, D]
             word_outputs = self.act(word_outputs)
             word_outputs = self.word_word_weight(word_outputs)
             word_outputs = self.dropout(word_outputs)
+            # print(input_word_embeddings.size()) #([1, 512, 5, 200])
+            # print(1)
+            
+            assert input_inter_mask is not None
+            inter_word_outputs = self.word_transform(
+                input_inter_embeddings) 
+            inter_word_outputs = self.act(inter_word_outputs)
+            inter_word_outputs = self.word_word_weight(inter_word_outputs)
+            inter_word_outputs = self.dropout(inter_word_outputs)   
+            #(1,400,512,5,768)         
+            # print(input_inter_embeddings.size())
+            # print(2)
+            # print(0/0)
 
             # attention_output = attention_output.unsqueeze(2) # [N, L, D] -> [N, L, 1, D]
             alpha = torch.matmul(layer_output.unsqueeze(2),
@@ -196,9 +205,23 @@ class BertLayer(nn.Module):
             alpha = alpha + (1 - input_word_mask.float()) * (-10000.0)
             alpha = torch.nn.Softmax(dim=-1)(alpha)  # [N, L, W]
             alpha = alpha.unsqueeze(-1)  # [N, L, W, 1]
+
+            beta = torch.matmul(layer_output.unsqueeze(2),
+                                 self.attn_W)  # [N, 不知道,L, 1, D]
+            beta = torch.matmul(beta, torch.transpose(
+                inter_word_outputs, 2, 3))  #  
+            beta = beta.squeeze()  # [N, L, W]
+            beta = beta + (1 - input_inter_mask.float()) * (-10000.0)
+            beta = torch.nn.Softmax(dim=-1)(beta)  # [N, L, W]
+            beta = beta.unsqueeze(-1)  # [N, L, W, 1]
+
             weighted_word_embedding = torch.sum(
                 word_outputs * alpha, dim=2)  # [N, L, D]
-            layer_output = layer_output + weighted_word_embedding
+
+            weighted_inter_word_embedding = torch.sum(
+                inter_word_outputs * beta, dim=2)  # [N, L, D]
+
+            layer_output = layer_output + weighted_word_embedding + weighted_inter_word_embedding
 
             layer_output = self.dropout(layer_output)
             layer_output = self.fuse_layernorm(layer_output)

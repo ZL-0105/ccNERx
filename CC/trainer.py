@@ -99,7 +99,6 @@ class NERTrainer(ITrainer):
         if self.loader_name == 'le_loader_zl':
             self.vocab_embedding = result['vocab_embedding']
             self.embedding_dim = result['embedding_dim']
-
             self.inter_embedding = result['inter_embedding']   
             self.inter_embedding_dim = result['inter_embedding_dim']
             # print(self.inter_embedding)
