@@ -5,6 +5,7 @@ from transformers import BertConfig, BertModel
 from CC.LEBert import WCBertModel, BertPreTrainedModel
 from CC.ZLEBert import ZWCBertModel
 from CC.PCBert import PCBertModel
+from CC.ZLEBert_v2 import ZWCBertModel_v2
 from CC.crf import CRF
 from CC.birnncrf import BiRnnCrf
 from ICCSupervised.ICCSupervised import IModel
@@ -13,9 +14,9 @@ from ICCSupervised.ICCSupervised import IModel
 class CCNERModel(IModel):
 
     def __init__(self, **args):
-        required_pretrained_embedding_models = ['LEBert', 'LEBertFusion', 'PLEBert', 'ZLEBert']
+        required_pretrained_embedding_models = ['LEBert', 'LEBertFusion', 'PLEBert', 'ZLEBert', 'ZLEBert_v2']
         required_label_embedding_models = ['PLEBert']
-        required_inter_embedding_models = ['ZLEBert']
+        required_inter_embedding_models = ['ZLEBert','ZLEBert_v2']
         assert "model_name" in args, "argument model_name required"
         assert "bert_config_file_name" in args, "argument bert_config_file_name required"
         assert "pretrained_file_name" in args, "argument pretrained_file_name required"
@@ -44,7 +45,9 @@ class CCNERModel(IModel):
         if self.model_name == 'LEBert':
             self.model = LEBertModel.from_pretrained(
             self.pretrained_file_name, pretrained_embeddings=self.pretrained_embeddings, config=config)
-        
+        elif self.model_name == 'ZLEBert_v2':
+            self.model = ZLEBertModel_v2.from_pretrained(
+            self.pretrained_file_name, pretrained_embeddings=self.pretrained_embeddings, config=config, inter_embeddings = self.inter_embeddings)
         elif self.model_name == 'ZLEBert':
             self.model = ZLEBertModel.from_pretrained(
             self.pretrained_file_name, pretrained_embeddings=self.pretrained_embeddings, config=config, inter_embeddings = self.inter_embeddings)
@@ -88,7 +91,65 @@ class BertBaseModel(BertPreTrainedModel):
             'hidden_states': outputs.hidden_states,
             'attentions': outputs.attentions,
         }
+# inter
+class ZLEBertModel_v2(BertPreTrainedModel):
+    '''
+    config: BertConfig
+    pretrained_embeddings: 预训练embeddings shape: size * 200
+    '''
 
+    def __init__(self, config, pretrained_embeddings, inter_embeddings):
+        super().__init__(config)
+
+        word_vocab_size = pretrained_embeddings.shape[0]
+        embed_dim = pretrained_embeddings.shape[1]
+        self.word_embeddings = nn.Embedding(word_vocab_size, embed_dim)
+        
+        inter_word_vocab_size = inter_embeddings.shape[0]
+        inter_embed_dim = inter_embeddings.shape[1]
+        self.inter_word_embeddings = nn.Embedding(inter_word_vocab_size, inter_embed_dim)
+        
+        self.bert = ZWCBertModel_v2(config)
+
+        self.init_weights()
+        
+        # self.inter_word_embeddings.weight.data.copy_(
+        #     torch.from_numpy(inter_embeddings))
+        # init the embedding
+        self.word_embeddings.weight.data.copy_(
+            torch.from_numpy(pretrained_embeddings))
+        print("Load pretrained embedding from file.........")
+
+    def forward(
+            self,
+            **args
+    ):
+
+
+        matched_word_embeddings = self.word_embeddings(
+            args['matched_word_ids'])   
+        matched_inter_embeddings = self.inter_word_embeddings(
+            args['inter_matched_word_ids'])
+        outputs = self.bert(
+            input_ids=args['input_ids'],
+            attention_mask=args['attention_mask'],
+            token_type_ids=args['token_type_ids'],
+            matched_word_embeddings=matched_word_embeddings,
+            matched_word_mask=args['matched_word_mask'],
+
+            matched_inter_embeddings= matched_inter_embeddings,
+            matched_inter_mask=args['inter_matched_word_mask'],
+        )
+
+        sequence_output = outputs[0]
+
+        return {
+            'mix_output': sequence_output,
+            'last_hidden_state': outputs.last_hidden_state,
+            'pooler_output': outputs.pooler_output,
+            'hidden_states': outputs.hidden_states,
+            'attentions': outputs.attentions,
+        }
 # inter
 class ZLEBertModel(BertPreTrainedModel):
     '''
