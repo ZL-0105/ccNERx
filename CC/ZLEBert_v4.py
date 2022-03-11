@@ -4,6 +4,7 @@ implement of LEBERT
 
 import math
 import os
+from random import random
 import warnings
 
 import torch
@@ -13,6 +14,7 @@ from torch import nn
 from transformers import BertConfig
 from CC.crf import CRF
 
+import numpy
 from transformers.modeling_utils import (
     PreTrainedModel,
     apply_chunking_to_forward,
@@ -147,13 +149,10 @@ class BertLayer(nn.Module):
             output_attentions=output_attentions,
         )
         # this is the contextual representation
-        attention_output = self_attention_outputs[0]
+        attention_output = self_attention_outputs[0] # [4, 512, 768]
         # add self attentions if we output attention weights
         outputs = self_attention_outputs[1:]
-
-        # decode need join attention from the outputs
         
-
         if self.is_decoder and encoder_hidden_states is not None:
             assert hasattr(
                 self, "crossattention"
@@ -170,32 +169,23 @@ class BertLayer(nn.Module):
             # add cross attentions if we output attention weights
             outputs = outputs + cross_attention_outputs[1:]
 
+        # 字符特征
         layer_output = apply_chunking_to_forward(
             self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
         )
 
+        
+        # 线性注意力
         if self.has_word_attn:
             assert input_word_mask is not None
-            # transform 200 => 768
+            # transform 200 => 768 维度对齐
+            # 词向量
             word_outputs = self.word_transform(
                 input_word_embeddings)  # [N, L, W, D]
             word_outputs = self.act(word_outputs)
             word_outputs = self.word_word_weight(word_outputs)
             word_outputs = self.dropout(word_outputs)
-            # print(input_word_embeddings.size()) #([1, 512, 5, 200])
-            # print(1)
-            
-            assert input_inter_mask is not None
-            inter_word_outputs = self.word_transform(
-                input_inter_embeddings) 
-            inter_word_outputs = self.act(inter_word_outputs)
-            inter_word_outputs = self.word_word_weight(inter_word_outputs)
-            inter_word_outputs = self.dropout(inter_word_outputs)   
-            #(1,400,512,5,768)         
-            # print(input_inter_embeddings.size())
-            # print(2)
-            # print(0/0)
-
+                 
             # attention_output = attention_output.unsqueeze(2) # [N, L, D] -> [N, L, 1, D]
             alpha = torch.matmul(layer_output.unsqueeze(2),
                                  self.attn_W)  # [N, L, 1, D]
@@ -206,6 +196,26 @@ class BertLayer(nn.Module):
             alpha = torch.nn.Softmax(dim=-1)(alpha)  # [N, L, W]
             alpha = alpha.unsqueeze(-1)  # [N, L, W, 1]
 
+            weighted_word_embedding = torch.sum(
+                word_outputs * alpha, dim=2)  # [N, L, D]
+
+            # z 
+            layer_output = layer_output + weighted_word_embedding
+            layer_output = self.dropout(layer_output)
+            layer_output = self.fuse_layernorm(layer_output)
+            
+        if self.has_word_attn:
+            
+            # transform 200 => 768 维度对齐
+            # 外部词向量
+            assert input_inter_mask is not None
+            inter_word_outputs = self.word_transform(
+                input_inter_embeddings) 
+            inter_word_outputs = self.act(inter_word_outputs)
+            inter_word_outputs = self.word_word_weight(inter_word_outputs)
+            inter_word_outputs = self.dropout(inter_word_outputs)   
+                 
+            # attention_output = attention_output.unsqueeze(2) # [N, L, D] -> [N, L, 1, D]
             beta = torch.matmul(layer_output.unsqueeze(2),
                                  self.attn_W)  # [N, L, 1, D]
             beta = torch.matmul(beta, torch.transpose(
@@ -215,19 +225,14 @@ class BertLayer(nn.Module):
             beta = torch.nn.Softmax(dim=-1)(beta)  # [N, L, W]
             beta = beta.unsqueeze(-1)  # [N, L, W, 1]
 
-            weighted_word_embedding = torch.sum(
-                word_outputs * alpha, dim=2)  # [N, L, D]
-
             weighted_inter_word_embedding = torch.sum(
                 inter_word_outputs * beta, dim=2)  # [N, L, D]
 
-            layer_output = layer_output + weighted_word_embedding + weighted_inter_word_embedding
+            layer_output = layer_output + weighted_inter_word_embedding
 
             layer_output = self.dropout(layer_output)
             layer_output = self.fuse_layernorm(layer_output)
 
-            # inter_embedding
-            
         outputs = (layer_output,) + outputs 
         return outputs
 
@@ -369,9 +374,9 @@ class BertPreTrainedModel(PreTrainedModel):
             module.bias.data.zero_()
 
 
-class ZWCBertModel(BertPreTrainedModel):
+class ZWCBertModel_v4(BertPreTrainedModel):
     def __init__(self, config, add_pooling_layer=True):
-        super(ZWCBertModel, self).__init__(config)
+        super(ZWCBertModel_v4, self).__init__(config)
 
         self.embeddings = BertEmbeddings(config)
         self.encoder = BertEncoder(config)

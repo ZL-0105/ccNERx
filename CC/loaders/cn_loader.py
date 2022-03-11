@@ -16,7 +16,7 @@ class CNDataLoader(IDataLoader):
         if "eval_file" in args:
             self.output_eval = True
 
-        self.word_tag_split = ' '
+        self.word_tag_split = '	'
         if "word_tag_split" in args:
             self.word_tag_split = args['word_tag_split']
 
