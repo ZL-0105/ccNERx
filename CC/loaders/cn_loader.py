@@ -28,7 +28,7 @@ class CNDataLoader(IDataLoader):
         if "pattern" in args:
             self.pattern = args['pattern']
 
-        self.max_seq_length = 50
+        self.max_seq_length = 150
         if "max_seq_length" in args:
             self.max_seq_length = args['max_seq_length']
 

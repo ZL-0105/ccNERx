@@ -67,25 +67,47 @@ class CCNERModel(IModel):
         elif self.model_name == 'Bert':
             self.model = BertBaseModel.from_pretrained(
             self.pretrained_file_name, config=config)
-        
+        elif self.model_name == 'Bert_softmax':
+            config.tagset_size = self.tagset_size
+            self.model = BertSoftmaxModel.from_pretrained(
+            self.pretrained_file_name, config=config)
         self.crf = CRF_Only(
             tagset_size=self.tagset_size, embedding_dim=config.hidden_size, hidden_dim=self.hidden_dim)
         self.birnncrf = BiRnnCrf(
             tagset_size=self.tagset_size, embedding_dim=config.hidden_size, hidden_dim=self.hidden_dim)
-        # self.fc = nn.Linear(config.hidden_size, self.tagset_size)
-        # self.softmax = nn.Softmax(dim=1)
+            
 
     def get_model(self):
-        return self.model, self.birnncrf, self.crf
+        return self.model, self.birnncrf, self.crf 
 
     def __call__(self):
         return self.get_model()
+
+class BertSoftmaxModel(BertPreTrainedModel):
+    def __init__(self, config):
+        super().__init__(config)
+        self.bert = BertModel(config)
+        
+        self.fc = nn.Linear(config.hidden_size, config.tagset_size)
+        self.softmax = nn.Softmax(dim=1)
+        self.init_weights()
+    
+    def forward(self, **args):
+        input = {
+            'input_ids': args['input_ids'],
+            'attention_mask': args['attention_mask']
+        }
+        if 'token_type_ids' in args:
+            input['token_type_ids'] = args['token_type_ids']
+        outputs = self.bert(**input)
+        outputs = self.fc(outputs[0])
+        outputs = self.softmax(outputs)
+        return  outputs
 
 class BertBaseModel(BertPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.bert = BertModel(config)
-
         self.init_weights()
     
     def forward(self, **args):
@@ -103,6 +125,8 @@ class BertBaseModel(BertPreTrainedModel):
             'hidden_states': outputs.hidden_states,
             'attentions': outputs.attentions,
         }
+
+
 class ZLEBertModel_v4(BertPreTrainedModel):
     '''
     config: BertConfig

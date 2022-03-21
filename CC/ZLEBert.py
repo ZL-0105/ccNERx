@@ -192,9 +192,7 @@ class BertLayer(nn.Module):
             inter_word_outputs = self.word_word_weight(inter_word_outputs)
             inter_word_outputs = self.dropout(inter_word_outputs)   
             #(1,400,512,5,768)         
-            # print(input_inter_embeddings.size())
-            # print(2)
-            # print(0/0)
+
 
             # attention_output = attention_output.unsqueeze(2) # [N, L, D] -> [N, L, 1, D]
             alpha = torch.matmul(layer_output.unsqueeze(2),
