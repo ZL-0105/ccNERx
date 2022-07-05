@@ -24,7 +24,7 @@ class CNDataLoader(IDataLoader):
         if "eval_file" in args:
             self.eval_file = args['eval_file']
 
-        self.pattern = '， O'
+        self.pattern = '。 O'
         if "pattern" in args:
             self.pattern = args['pattern']
 
